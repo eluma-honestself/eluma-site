@@ -1,6 +1,48 @@
 [build]
-  publish = "site"
-  functions = "netlify/functions"
+  publish = "."
+  functions = "."
 
 [functions]
   node_bundler = "esbuild"
+
+[[redirects]]
+  from = "/review-submit.mjs"
+  to = "/404"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/review-moderate.mjs"
+  to = "/404"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/reviews.mjs"
+  to = "/404"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/package.json"
+  to = "/404"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/package-lock.json"
+  to = "/404"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/netlify.toml"
+  to = "/404"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/LISEZMOI.md"
+  to = "/404"
+  status = 404
+  force = true

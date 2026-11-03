@@ -1,8 +1,9 @@
 # eluma : avis validés par email
 
 ## Contenu du dossier
-- `site/index.html` : le site
-- `netlify/functions/` : les 3 scripts (réception d'un avis, page de validation, liste des avis publiés)
+Tous les fichiers sont au même niveau, sans dossier :
+- `index.html` : le site
+- `review-submit.mjs`, `review-moderate.mjs`, `reviews.mjs` : les 3 scripts (réception d'un avis, page de validation, liste des avis publiés)
 - `netlify.toml` et `package.json` : réglages pour Netlify
 
 ## Réglages à faire une seule fois dans Netlify
@@ -22,4 +23,4 @@ Le compte Resend doit être créé avec l'adresse eluma.honestself@gmail.com : s
 3. « Publier » ouvre une page où tu peux corriger la traduction puis confirmer. L'avis apparaît alors sur le site, à la suite des autres.
 4. « Refuser » ouvre une page de confirmation. L'avis n'est jamais affiché.
 
-Les 5 premiers avis restent écrits dans `site/index.html`.
+Les 5 premiers avis restent écrits dans `index.html`.
