@@ -1,6 +1,6 @@
 [build]
   publish = "."
-  functions = "."
+  functions = "netlify/functions"
 
 [functions]
   node_bundler = "esbuild"
@@ -43,6 +43,12 @@
 
 [[redirects]]
   from = "/LISEZMOI.md"
+  to = "/404"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/netlify/*"
   to = "/404"
   status = 404
   force = true
