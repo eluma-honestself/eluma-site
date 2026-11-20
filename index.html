@@ -354,7 +354,31 @@ button.rv-card:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
       </div>
       <div>
         
-        <form class="bform" id="bform" novalidate>
+        <style>
+.bdatewrap{position:relative}
+.bdatebtn{display:block;width:100%;min-height:50px;text-align:left;font:inherit;font-size:17px;color:var(--ink);background:rgba(255,255,255,.6);border:1px solid rgba(59,75,148,.45);border-radius:12px;padding:12px 40px 12px 14px;cursor:pointer;position:relative;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bdatebtn::after{content:"";position:absolute;right:14px;top:50%;width:16px;height:16px;margin-top:-8px;border:1.5px solid var(--ink);border-radius:4px;border-top-width:4px;opacity:.75}
+.bdatebtn.empty{color:rgba(59,75,148,.6)}
+.bdatebtn:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.bcal{position:absolute;z-index:30;top:calc(100% + 8px);left:0;width:300px;max-width:calc(100vw - 48px);background:var(--paper);color:var(--ink);border:1px solid rgba(59,75,148,.35);border-radius:18px;padding:14px;box-shadow:0 14px 40px rgba(31,42,92,.18)}
+.bcal[hidden]{display:none}
+.bcal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.bcal-head b{font-weight:400;font-size:16px}
+.bcal-nav{font:inherit;font-size:20px;line-height:1;width:34px;height:34px;border-radius:50%;border:1px solid transparent;background:none;color:var(--ink);cursor:pointer}
+.bcal-nav:hover:not(:disabled){border-color:var(--ink)}
+.bcal-nav:disabled{opacity:.25;cursor:default}
+.bcal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;text-align:center}
+.bcal-dow{font-size:12px;opacity:.65;padding:4px 0}
+.bcal-day{font:inherit;font-size:15px;aspect-ratio:1;border-radius:50%;border:1px solid transparent;background:none;color:var(--ink);cursor:pointer;padding:0}
+.bcal-day:hover:not(:disabled){border-color:var(--ink)}
+.bcal-day:disabled{opacity:.3;cursor:not-allowed}
+.bcal-day.taken{text-decoration:line-through}
+.bcal-day.sel{background:var(--ink);color:var(--paper)}
+.bcal-day:focus-visible{outline:2px solid var(--ink);outline-offset:1px}
+.bcal-legend{margin:10px 2px 0;font-size:12px;opacity:.75}
+@media (max-width:520px){.bcal{width:100%;max-width:none}}
+</style>
+<form class="bform" id="bform" novalidate>
           <fieldset>
             <legend>Session type</legend>
             <div class="types">
@@ -363,7 +387,7 @@ button.rv-card:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
             </div>
           </fieldset>
           <div class="row2 rdt">
-            <div><label class="l" for="bdate">Date</label><input type="date" id="bdate" required></div>
+            <div class="bdatewrap"><label class="l" for="bdatebtn">Date</label><input type="hidden" id="bdate"><button type="button" id="bdatebtn" class="bdatebtn" aria-haspopup="dialog" aria-expanded="false">Choose a date</button><div id="bcal" class="bcal" role="dialog" aria-label="Choose a date" hidden></div></div>
             <div><label class="l" for="btime">Start time</label><select id="btime"><option>10:00am</option><option>11:00am</option><option>12:00pm</option></select></div>
           </div>
           <div id="peoplewrap"><label class="l" for="bpeople">Number of people</label><select id="bpeople"><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select></div>
@@ -404,15 +428,61 @@ button.rv-card:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
 (function(){
   var f=document.getElementById('bform');if(!f)return;
   var date=f.querySelector('#bdate'),note=document.getElementById('bnote'),btn=f.querySelector('.bsubmit');
+  var dbtn=document.getElementById('bdatebtn'),cal=document.getElementById('bcal');
   function iso(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
-  var min=new Date();min.setDate(min.getDate()+2);date.min=iso(min);
+  function parse(v){var p=v.split('-');return new Date(+p[0],+p[1]-1,+p[2])}
+  var min=new Date();min.setDate(min.getDate()+2);var MIN=iso(min);
   var BLOCKED=[]; /* days with a confirmed session, loaded from the server */
-  fetch('/api/blocked-dates',{cache:'no-store'}).then(function(r){return r.json()}).then(function(d){
-    BLOCKED=d.blocked||[];if(d.min)date.min=d.min;
-    if(date.value&&blocked(date.value))note.textContent='This day is already booked. Please choose another date.';
-  }).catch(function(){});
   function blocked(v){return BLOCKED.indexOf(v)>-1}
-  date.addEventListener('change',function(){note.textContent=blocked(date.value)?'This day is already booked. Please choose another date.':''});
+  fetch('/api/blocked-dates',{cache:'no-store'}).then(function(r){return r.json()}).then(function(d){
+    BLOCKED=d.blocked||[];if(d.min)MIN=d.min;
+    if(date.value&&(blocked(date.value)||date.value<MIN))setDate('');
+    if(!cal.hidden)draw();
+  }).catch(function(){});
+
+  /* ---- eluma calendar: past days, days within 48h and booked days cannot be chosen ---- */
+  var MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
+  var view=null;
+  function label(v){return parse(v).toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short',year:'numeric'})}
+  function setDate(v){
+    date.value=v;
+    dbtn.textContent=v?label(v):'Choose a date';
+    dbtn.classList.toggle('empty',!v);
+  }
+  function draw(){
+    var first=new Date(view.getFullYear(),view.getMonth(),1);
+    var minD=parse(MIN),canPrev=first>new Date(minD.getFullYear(),minD.getMonth(),1);
+    var h='<div class="bcal-head"><button type="button" class="bcal-nav" data-m="-1" aria-label="Previous month"'+(canPrev?'':' disabled')+'>‹</button>'+
+      '<b>'+MONTHS[view.getMonth()]+' '+view.getFullYear()+'</b>'+
+      '<button type="button" class="bcal-nav" data-m="1" aria-label="Next month">›</button></div><div class="bcal-grid">';
+    ['Mo','Tu','We','Th','Fr','Sa','Su'].forEach(function(d){h+='<span class="bcal-dow">'+d+'</span>'});
+    var lead=(first.getDay()+6)%7;for(var i=0;i<lead;i++)h+='<span></span>';
+    var days=new Date(view.getFullYear(),view.getMonth()+1,0).getDate();
+    for(var d=1;d<=days;d++){
+      var v=iso(new Date(view.getFullYear(),view.getMonth(),d)),taken=blocked(v),off=v<MIN||taken;
+      var name=parse(v).toLocaleDateString('en-AU',{weekday:'long',day:'numeric',month:'long'})+(taken?', already booked':off?', not available':'');
+      h+='<button type="button" class="bcal-day'+(taken?' taken':'')+(v===date.value?' sel':'')+'" data-d="'+v+'" aria-label="'+name+'"'+(off?' disabled':'')+'>'+d+'</button>';
+    }
+    h+='</div><p class="bcal-legend">Crossed-out days are already booked.</p>';
+    cal.innerHTML=h;
+  }
+  function openCal(){
+    view=date.value?parse(date.value):parse(MIN);view.setDate(1);
+    draw();cal.hidden=false;dbtn.setAttribute('aria-expanded','true');
+    var t=cal.querySelector('.bcal-day.sel')||cal.querySelector('.bcal-day:not(:disabled)');if(t)t.focus();
+  }
+  function closeCal(back){cal.hidden=true;dbtn.setAttribute('aria-expanded','false');if(back)dbtn.focus()}
+  dbtn.addEventListener('click',function(){cal.hidden?openCal():closeCal()});
+  cal.addEventListener('click',function(e){
+    var b=e.target.closest('button');if(!b||b.disabled)return;
+    if(b.dataset.m){view.setMonth(view.getMonth()+(+b.dataset.m));draw();var n=cal.querySelector('[data-m="'+b.dataset.m+'"]');if(n&&!n.disabled)n.focus();return}
+    if(b.dataset.d){setDate(b.dataset.d);note.textContent='';closeCal(true)}
+  });
+  document.addEventListener('click',function(e){if(!cal.hidden&&!cal.contains(e.target)&&e.target!==dbtn)closeCal()});
+  document.addEventListener('keydown',function(e){if(e.key==='Escape'&&!cal.hidden)closeCal(true)});
+  setDate('');
+
+  /* ---- session type ---- */
   var radios=f.querySelectorAll('input[name=type]');
   function type(){return f.querySelector('input[name=type]:checked').value}
   function sync(){var g=type()==='Group session',ps=document.getElementById('bpeople');ps.disabled=!g;ps.options[0].disabled=g;if(g){if(ps.value==='1')ps.value='2'}else{ps.value='1'}}
@@ -422,27 +492,29 @@ button.rv-card:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
       radios.forEach(function(r){r.checked=(r.value===a.getAttribute('data-type'))});sync();
     });
   });
+
+  /* ---- send ---- */
   function val(s){return (f.querySelector(s).value||'').trim()}
   f.addEventListener('submit',function(e){
     e.preventDefault();
-    if(!date.value){note.textContent='Please choose a date.';date.focus();return}
-    if(date.value<date.min){note.textContent='Bookings close 48 hours before the session. Please choose a later date.';date.focus();return}
-    if(blocked(date.value)){note.textContent='This day is already booked. Please choose another date.';date.focus();return}
+    if(!date.value){note.textContent='Please choose a date.';dbtn.focus();return}
+    if(date.value<MIN){note.textContent='Bookings close 48 hours before the session. Please choose a later date.';dbtn.focus();return}
+    if(blocked(date.value)){note.textContent='This day is already booked. Please choose another date.';dbtn.focus();return}
     if(!val('#bname')){note.textContent='Please add your name.';f.querySelector('#bname').focus();return}
     var m=val('#bemail');if(!m||m.indexOf('@')<1){note.textContent='Please add a valid email address.';f.querySelector('#bemail').focus();return}
     if(type()==='Group session'&&+f.querySelector('#bpeople').value<2){note.textContent='A group session needs at least 2 people. For one person, please choose a 1:1 session.';return}
     var data={type:type(),date:date.value,time:f.querySelector('#btime').value,people:f.querySelector('#bpeople').value,
       name:val('#bname'),email:m,phone:val('#bphone'),age:val('#bage'),hobbies:val('#bhobbies'),music:val('#bmusic'),message:val('#bmsg')};
-    btn.disabled=true;var label=btn.textContent;btn.textContent='Sending…';note.textContent='';
+    btn.disabled=true;var lbl=btn.textContent;btn.textContent='Sending…';note.textContent='';
     fetch('/api/booking-request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)})
       .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j}})})
       .then(function(res){
-        if(res.ok&&res.j.ok){f.reset();sync();note.textContent=res.j.message||'Thank you! Your request has been sent.';btn.textContent='Request sent ✓';return}
-        if(res.j.blocked&&BLOCKED.indexOf(data.date)<0)BLOCKED.push(data.date);
+        if(res.ok&&res.j.ok){f.reset();setDate('');sync();note.textContent=res.j.message||'Thank you! Your request has been sent.';btn.textContent='Request sent ✓';return}
+        if(res.j.blocked){if(!blocked(data.date))BLOCKED.push(data.date);setDate('')}
         note.textContent=res.j.error||'Something went wrong. Please write to eluma.honestself@gmail.com.';
-        btn.disabled=false;btn.textContent=label;
+        btn.disabled=false;btn.textContent=lbl;
       })
-      .catch(function(){note.textContent='Connection problem. Please try again or write to eluma.honestself@gmail.com.';btn.disabled=false;btn.textContent=label});
+      .catch(function(){note.textContent='Connection problem. Please try again or write to eluma.honestself@gmail.com.';btn.disabled=false;btn.textContent=lbl});
   });
 })();
 </script>
