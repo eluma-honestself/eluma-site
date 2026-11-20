@@ -403,13 +403,17 @@ button.rv-card:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
 <script>
 (function(){
   var f=document.getElementById('bform');if(!f)return;
-  var date=f.querySelector('#bdate'),note=document.getElementById('bnote');
+  var date=f.querySelector('#bdate'),note=document.getElementById('bnote'),btn=f.querySelector('.bsubmit');
   function iso(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
   var min=new Date();min.setDate(min.getDate()+2);date.min=iso(min);
-  var BLOCKED=[]; /* fully booked days, format YYYY-MM-DD */
+  var BLOCKED=[]; /* days with a confirmed session, loaded from the server */
+  fetch('/api/blocked-dates',{cache:'no-store'}).then(function(r){return r.json()}).then(function(d){
+    BLOCKED=d.blocked||[];if(d.min)date.min=d.min;
+    if(date.value&&blocked(date.value))note.textContent='This day is already booked. Please choose another date.';
+  }).catch(function(){});
   function blocked(v){return BLOCKED.indexOf(v)>-1}
   date.addEventListener('change',function(){note.textContent=blocked(date.value)?'This day is already booked. Please choose another date.':''});
-  var radios=f.querySelectorAll('input[name=type]'),pw=document.getElementById('peoplewrap');
+  var radios=f.querySelectorAll('input[name=type]');
   function type(){return f.querySelector('input[name=type]:checked').value}
   function sync(){var g=type()==='Group session',ps=document.getElementById('bpeople');ps.disabled=!g;ps.options[0].disabled=g;if(g){if(ps.value==='1')ps.value='2'}else{ps.value='1'}}
   radios.forEach(function(r){r.addEventListener('change',sync)});sync();
@@ -418,27 +422,27 @@ button.rv-card:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
       radios.forEach(function(r){r.checked=(r.value===a.getAttribute('data-type'))});sync();
     });
   });
+  function val(s){return (f.querySelector(s).value||'').trim()}
   f.addEventListener('submit',function(e){
     e.preventDefault();
     if(!date.value){note.textContent='Please choose a date.';date.focus();return}
     if(date.value<date.min){note.textContent='Bookings close 48 hours before the session. Please choose a later date.';date.focus();return}
     if(blocked(date.value)){note.textContent='This day is already booked. Please choose another date.';date.focus();return}
-    var n=f.querySelector('#bname'),m=f.querySelector('#bemail');
-    if(!n.value.trim()){note.textContent='Please add your name.';n.focus();return}
-    if(!m.value.trim()||m.value.indexOf('@')<1){note.textContent='Please add a valid email address.';m.focus();return}
+    if(!val('#bname')){note.textContent='Please add your name.';f.querySelector('#bname').focus();return}
+    var m=val('#bemail');if(!m||m.indexOf('@')<1){note.textContent='Please add a valid email address.';f.querySelector('#bemail').focus();return}
     if(type()==='Group session'&&+f.querySelector('#bpeople').value<2){note.textContent='A group session needs at least 2 people. For one person, please choose a 1:1 session.';return}
-    var p=date.value.split('-'),d=new Date(+p[0],+p[1]-1,+p[2]);
-    var ds=d.toLocaleDateString('en-AU',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
-    var t=type(),lines=['Hi Eliot,','','I would like to book a '+t.toLowerCase()+'.','','Date: '+ds,'Start time: '+f.querySelector('#btime').value];
-    if(t==='Group session')lines.push('Number of people: '+f.querySelector('#bpeople').value);
-    lines.push('','Name: '+n.value.trim(),'Email: '+m.value.trim());
-    var ph=f.querySelector('#bphone').value.trim();if(ph)lines.push('Phone: '+ph);
-    var ag=f.querySelector('#bage').value.trim(),hb=f.querySelector('#bhobbies').value.trim(),mu=f.querySelector('#bmusic').value.trim();
-    if(ag||hb||mu){lines.push('');if(ag)lines.push('Age: '+ag);if(hb)lines.push('Hobbies and passions: '+hb);if(mu)lines.push('Music I love: '+mu)}
-    var ms=f.querySelector('#bmsg').value.trim();if(ms)lines.push('','Message: '+ms);
-    var href='mailto:eluma.honestself@gmail.com?subject='+encodeURIComponent('Booking request: '+t+', '+ds)+'&body='+encodeURIComponent(lines.join('\n'));
-    note.textContent='Your email app should open with your request. If it does not, write to eluma.honestself@gmail.com.';
-    location.href=href;
+    var data={type:type(),date:date.value,time:f.querySelector('#btime').value,people:f.querySelector('#bpeople').value,
+      name:val('#bname'),email:m,phone:val('#bphone'),age:val('#bage'),hobbies:val('#bhobbies'),music:val('#bmusic'),message:val('#bmsg')};
+    btn.disabled=true;var label=btn.textContent;btn.textContent='Sending…';note.textContent='';
+    fetch('/api/booking-request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)})
+      .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j}})})
+      .then(function(res){
+        if(res.ok&&res.j.ok){f.reset();sync();note.textContent=res.j.message||'Thank you! Your request has been sent.';btn.textContent='Request sent ✓';return}
+        if(res.j.blocked&&BLOCKED.indexOf(data.date)<0)BLOCKED.push(data.date);
+        note.textContent=res.j.error||'Something went wrong. Please write to eluma.honestself@gmail.com.';
+        btn.disabled=false;btn.textContent=label;
+      })
+      .catch(function(){note.textContent='Connection problem. Please try again or write to eluma.honestself@gmail.com.';btn.disabled=false;btn.textContent=label});
   });
 })();
 </script>
